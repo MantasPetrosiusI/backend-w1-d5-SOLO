@@ -22,6 +22,16 @@ const productsRouter = express.Router();
 productsRouter.get("/", async (req, res, next) => {
   try {
     const products = await getProducts();
+    if (req.query && req.query.category) {
+      const foundProducts = products.filter(
+        (product) => product.category === req.query.category
+      );
+      res.send(foundProducts);
+    } else {
+      res.send(`No products found in ${req.query.category} category`);
+      res.send(products);
+    }
+
     res.send(products);
   } catch (error) {
     next(error);
@@ -114,23 +124,6 @@ productsRouter.delete("/:productId", async (req, res, next) => {
           `Product with this id does not exist! (${req.params.productId})`
         )
       );
-    }
-  } catch (error) {
-    next(error);
-  }
-});
-
-productsRouter.get("/", async (req, res, next) => {
-  try {
-    const products = await getProducts();
-    if (req.query && req.query.category) {
-      const foundProducts = products.filter(
-        (product) => product.category === req.query.category
-      );
-      res.send(foundProducts);
-    } else {
-      res.send(`No products found in ${req.query.category} category`);
-      res.send(products);
     }
   } catch (error) {
     next(error);

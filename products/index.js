@@ -28,11 +28,8 @@ productsRouter.get("/", async (req, res, next) => {
       );
       res.send(foundProducts);
     } else {
-      res.send(`No products found in ${req.query.category} category`);
       res.send(products);
     }
-
-    res.send(products);
   } catch (error) {
     next(error);
   }
@@ -261,6 +258,7 @@ productsRouter.post(
           const afterEdit = {
             ...preEdit,
             imageUrl: `http://localhost:3000/images/products/${fileName}`,
+            updatedAt: new Date(),
           };
           products[index] = afterEdit;
 

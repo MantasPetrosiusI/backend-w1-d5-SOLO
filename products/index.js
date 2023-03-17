@@ -27,8 +27,7 @@ productsRouter.get("/", async (req, res, next) => {
       .limit(perPage)
       .populate({
         path: "reviews",
-        select: "comment rate",
-        options: { _id: 0 },
+        select: { _id: 0, comment: 1, rate: 1 },
       });
     const userQuery = Object.keys(req.query)[0];
     if (userQuery === "category") {

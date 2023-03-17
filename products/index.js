@@ -32,17 +32,18 @@ productsRouter.get("/", async (req, res, next) => {
     const userQuery = Object.keys(req.query)[0];
     if (userQuery === "category") {
       if (req.query && req.query.category) {
-        const foundProducts = products.filter(
+        const foundCategory = products.filter(
           (product) => product.category === req.query.category
         );
-        res.send(foundProducts);
+        res.send(foundCategory);
       }
     } else if (userQuery === "price") {
       if (req.query && req.query.price) {
-        const foundProducts = products.filter(
-          (product) => product.price === req.query.price
+        const foundPrice = products.filter(
+          (product) =>
+            product.price.toLocaleString() === req.query.price.toString()
         );
-        res.send(foundProducts);
+        res.send(foundPrice);
       }
     } else {
       res.send(products);

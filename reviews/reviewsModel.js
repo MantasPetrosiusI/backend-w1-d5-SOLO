@@ -4,10 +4,10 @@ const { Schema, model } = mongoose;
 
 const reviewsSchema = new Schema(
   {
-    comment: { type: String, reqired: true },
+    comment: { type: String, required: true },
     rate: {
       type: Number,
-      reqired: true,
+      required: true,
       min: [0, "Min rating 0!"],
       max: [5, "Max rating 5! :)"],
     },

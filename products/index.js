@@ -1,15 +1,11 @@
 import express from "express";
-import uniqid from "uniqid";
 import createError from "http-errors";
 import {
   getProducts,
-  getReviews,
   writeProducts,
-  writeReviews,
   saveProductImage,
 } from "../lib/fs-tools.js";
-import productsSchema from "./productsSchema.js";
-import reviewsSchema from "./reviewsSchema.js";
+import ProductsModel from "./productsModel.js";
 import multer from "multer";
 import { extname } from "path";
 
@@ -20,13 +16,35 @@ const productsRouter = express.Router();
 }
 ////////////////////////////////////////////////////////////////////////////////
 productsRouter.get("/", async (req, res, next) => {
+  const perPage = req.query.limit;
+  const page = parseInt(req.query.page) || 1;
+  const skip = (page - 1) * perPage;
+
   try {
-    const products = await getProducts();
-    if (req.query && req.query.category) {
-      const foundProducts = products.filter(
-        (product) => product.category === req.query.category
-      );
-      res.send(foundProducts);
+    const products = await ProductsModel.find()
+      .sort(req.query.sort)
+      .skip(skip)
+      .limit(perPage)
+      .populate({
+        path: "reviews",
+        select: "comment rate",
+        options: { _id: 0 },
+      });
+    const userQuery = Object.keys(req.query)[0];
+    if (userQuery === "category") {
+      if (req.query && req.query.category) {
+        const foundProducts = products.filter(
+          (product) => product.category === req.query.category
+        );
+        res.send(foundProducts);
+      }
+    } else if (userQuery === "price") {
+      if (req.query && req.query.price) {
+        const foundProducts = products.filter(
+          (product) => product.price === req.query.price
+        );
+        res.send(foundProducts);
+      }
     } else {
       res.send(products);
     }
@@ -37,42 +55,33 @@ productsRouter.get("/", async (req, res, next) => {
 
 productsRouter.get("/:productId", async (req, res, next) => {
   try {
-    const products = await getProducts();
-
-    const product = products.find(
-      (singleProduct) => singleProduct._id === req.params.productId
-    );
-    if (product) {
-      res.send(product);
-    } else {
+    const products = await ProductsModel.findById(
+      req.params.productId
+    ).populate({
+      path: "reviews",
+      select: { _id: 0, comment: 1, rate: 1 },
+    });
+    if (!products) {
       next(
         createError(
           404,
-          `Product with this id does not exist! (${req.params.productId})`
+          `Product with id ${req.params.productId} was not found!`
         )
       );
     }
+    res.send(products);
   } catch (error) {
     next(error);
   }
 });
 productsRouter.post("/", async (req, res, next) => {
   try {
-    const { error } = productsSchema.validate(req.body);
-    if (error) {
-      return res.status(400).send(error.details[0].message);
+    const newProduct = new ProductsModel(req.body);
+    const { _id } = await newProduct.save();
+    if (!newProduct) {
+      res.send(`Problems creating new product!`);
     }
-    const newProduct = {
-      _id: uniqid(),
-      ...req.body,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    };
-    const products = await getProducts();
-    products.push(newProduct);
-    await writeProducts(products);
-
-    res.status(201).send({ id: newProduct._id });
+    res.status(201).send(newProduct);
   } catch (error) {
     next(error);
   }
@@ -80,22 +89,18 @@ productsRouter.post("/", async (req, res, next) => {
 
 productsRouter.put("/:productId", async (req, res, next) => {
   try {
-    const products = await getProducts();
-
-    const index = products.findIndex(
-      (product) => product._id === req.params.productId
+    const updatedProduct = await ProductsModel.findByIdAndUpdate(
+      req.params.productId,
+      req.body,
+      { new: true, runValidators: true }
     );
-    if (index !== -1) {
-      const preEdit = products[index];
-      const afterEdit = { ...preEdit, ...req.body, updatedAt: new Date() };
-      products[index] = afterEdit;
-      await writeProducts(products);
-      res.send(afterEdit);
+    if (updatedProduct) {
+      res.send(updatedProduct);
     } else {
       next(
         createError(
           404,
-          `Product with this id does not exist! (${req.params.productId})`
+          `Product with id ${req.params.productId} was not found!`
         )
       );
     }
@@ -106,100 +111,14 @@ productsRouter.put("/:productId", async (req, res, next) => {
 
 productsRouter.delete("/:productId", async (req, res, next) => {
   try {
-    const products = await getProducts();
-    const remainingProducts = products.filter(
-      (product) => product._id !== req.params.productId
-    );
-
-    if (products.length !== remainingProducts.length) {
-      await writeProducts(remainingProducts);
-      res.status(204).send(`Product deleted!`);
+    const product = await ProductsModel.findByIdAndDelete(req.params.productId);
+    if (product) {
+      res.status(204).send();
     } else {
       next(
         createError(
           404,
-          `Product with this id does not exist! (${req.params.productId})`
-        )
-      );
-    }
-  } catch (error) {
-    next(error);
-  }
-});
-////////////////////////////////////////////////////////////////////////////////
-{
-  /*Reviews Section*/
-}
-////////////////////////////////////////////////////////////////////////////////
-productsRouter.post("/:productId/reviews", async (req, res, next) => {
-  try {
-    const { error } = reviewsSchema.validate(req.body);
-    if (error) {
-      next(createError(400));
-    }
-    const newReview = {
-      _id: uniqid(),
-      ...req.body,
-      productId: req.params.productId,
-      createdAt: new Date(),
-    };
-    const reviews = await getReviews();
-    reviews.push(newReview);
-    await writeReviews(reviews);
-
-    res.status(201).send({ id: newReview._id });
-  } catch (error) {
-    next(error);
-  }
-});
-productsRouter.get("/:productId/reviews/", async (req, res, next) => {
-  try {
-    const reviews = await getReviews();
-    res.send(reviews);
-  } catch (error) {
-    next(error);
-  }
-});
-
-productsRouter.get("/:productId/reviews/:reviewId", async (req, res, next) => {
-  try {
-    const reviews = await getReviews();
-
-    const review = reviews.find(
-      (singleReview) => singleReview._id === req.params.reviewId
-    );
-    if (review) {
-      res.send(review);
-    } else {
-      next(
-        createError(
-          404,
-          `Product with this id does not exist! (${req.params.reviewId})`
-        )
-      );
-    }
-  } catch (error) {
-    next(error);
-  }
-});
-productsRouter.put("/:productId/reviews/:reviewId", async (req, res, next) => {
-  try {
-    const reviews = await getReviews();
-
-    const index = reviews.findIndex(
-      (review) => review._id === req.params.reviewId
-    );
-    if (index !== -1) {
-      const preEdit = reviews[index];
-      const afterEdit = { ...preEdit, ...req.body, updatedAt: new Date() };
-      reviews[index] = afterEdit;
-      await writeReviews(reviews);
-      res.send(afterEdit);
-    } else {
-      next(
-        createError(
-          404,
-          `Product with this id does not exist! (${req.params.reviewId})`
+          `Product with id ${req.params.productId} was not found!`
         )
       );
     }
@@ -208,31 +127,6 @@ productsRouter.put("/:productId/reviews/:reviewId", async (req, res, next) => {
   }
 });
 
-productsRouter.delete(
-  "/:productId/reviews/:reviewId",
-  async (req, res, next) => {
-    try {
-      const reviews = await getReviews();
-      const remainingReviews = reviews.filter(
-        (review) => review._id !== req.params.reviewId
-      );
-
-      if (reviews.length !== remainingReviews.length) {
-        await writeReviews(remainingReviews);
-        res.status(204).send(`Product deleted!`);
-      } else {
-        next(
-          createError(
-            404,
-            `Product with this id does not exist! (${req.params.reviewId})`
-          )
-        );
-      }
-    } catch (error) {
-      next(error);
-    }
-  }
-);
 ////////////////////////////////////////////////////////////////////////////////
 {
   /*Image Section*/
